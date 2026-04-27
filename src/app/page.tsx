@@ -12,6 +12,7 @@ import { MessageItem } from '@/components/MessageItem';
 import { AvatarSelector } from '@/components/AvatarSelector';
 import { MessageInput } from '@/components/MessageInput';
 import { Footer } from '@/components/Footer';
+import { AdBanner } from '@/components/AdBanner';
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -417,6 +418,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-black font-sans" style={{ backgroundImage: 'linear-gradient(rgba(0,0,0,0.97), rgba(0,0,0,0.97)), url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23333\' fill-opacity=\'0.1\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")' }}>
       <Header messageCount={messages.length} />
+      <AdBanner />
 
       <main className={`${isMobile ? 'max-w-full' : 'max-w-4xl'} mx-auto ${isMobile ? 'p-2' : 'p-4'}`}>
         <div className="bg-gray-900 border-4 border-double border-red-600 rounded-lg overflow-hidden shadow-2xl shadow-red-900/30" style={{ boxShadow: 'inset 0 0 20px rgba(139,0,0,0.3), 0 0 30px rgba(139,0,0,0.2)' }}>
