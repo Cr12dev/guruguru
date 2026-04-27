@@ -6,6 +6,11 @@ import { Message, Avatar, UserAvatar, UserPresence } from '@/types';
 import { AVATARS, getRandomAvatar, getAvatarsByType } from '@/lib/avatars';
 import { useWindowSize } from '@/hooks/useWindowSize';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { Header } from '@/components/Header';
+import { MessageItem } from '@/components/MessageItem';
+import { AvatarSelector } from '@/components/AvatarSelector';
+import { MessageInput } from '@/components/MessageInput';
+import { Footer } from '@/components/Footer';
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -27,7 +32,7 @@ export default function Home() {
   const clickTimerRef = useRef<{ [key: string]: NodeJS.Timeout | null }>({});
   const presenceUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { isMobile, isTablet, isDesktop } = useWindowSize();
+  const { isMobile } = useWindowSize();
   const isOnline = useOnlineStatus();
 
   // Initialize localStorage-dependent state on client side
@@ -356,10 +361,6 @@ export default function Home() {
     });
   };
 
-  const filteredAvatars = avatarFilter === 'all' 
-    ? AVATARS 
-    : getAvatarsByType(avatarFilter);
-
   // Sort messages: pinned first, then by date
   const sortedMessages = [...messages].sort((a, b) => {
     if (a.is_pinned && !b.is_pinned) return -1;
@@ -377,27 +378,10 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-black font-sans" style={{ backgroundImage: 'linear-gradient(rgba(0,0,0,0.97), rgba(0,0,0,0.97)), url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23333\' fill-opacity=\'0.1\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")' }}>
-      {/* Header */}
-      <header className="bg-gradient-to-b from-red-800 via-red-700 to-red-900 border-b-4 border-red-500 shadow-lg shadow-red-900/50 p-4" style={{ borderBottom: '3px solid #8b0000', borderTop: '3px solid #ff4444' }}>
-        <div className={`${isMobile ? 'max-w-full' : 'max-w-4xl'} mx-auto`}>
-          <h1 className={`${isMobile ? 'text-2xl' : isTablet ? 'text-3xl' : 'text-4xl'} font-bold text-white text-center tracking-wider`} style={{ fontFamily: 'Times New Roman, serif', textShadow: '2px 2px 4px rgba(0,0,0,0.8), -1px -1px 2px rgba(255,255,255,0.2)' }}>
-            ✦ GURUGURU FORUM ✦
-          </h1>
-          <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-red-200 text-center mt-2 font-semibold`} style={{ fontFamily: 'Arial, sans-serif', textShadow: '1px 1px 2px rgba(0,0,0,0.5)' }}>
-            El foro del okupa rumano de Manises • Estilo 2000s
-          </p>
-          <div className={`flex ${isMobile ? 'flex-col gap-1' : 'justify-center gap-4'} mt-3 ${isMobile ? 'text-[10px]' : 'text-xs'} text-red-300`}>
-            <span>📜 {messages.length} mensajes</span>
-            <span>👥 Online</span>
-            <span>⚡ Realtime</span>
-          </div>
-        </div>
-      </header>
+      <Header messageCount={messages.length} />
 
-      {/* Main Chat Container */}
       <main className={`${isMobile ? 'max-w-full' : 'max-w-4xl'} mx-auto ${isMobile ? 'p-2' : 'p-4'}`}>
         <div className="bg-gray-900 border-4 border-double border-red-600 rounded-lg overflow-hidden shadow-2xl shadow-red-900/30" style={{ boxShadow: 'inset 0 0 20px rgba(139,0,0,0.3), 0 0 30px rgba(139,0,0,0.2)' }}>
-          {/* Messages Area */}
           <div className={`${isMobile ? 'h-[50vh]' : 'h-[60vh]'} overflow-y-auto ${isMobile ? 'p-2' : 'p-4'} space-y-4 bg-black`} style={{ backgroundImage: 'linear-gradient(rgba(20,0,0,0.3), rgba(0,0,0,0.5))' }}>
             {messages.length === 0 && (
               <div className="text-center text-gray-500 py-8 border-2 border-dashed border-red-800 rounded-lg">
@@ -410,259 +394,54 @@ export default function Home() {
               const isOwnMessage = message.user_id === userId;
               const isEditing = editingMessage === message.id;
               const menuOpen = messageMenuOpen === message.id;
-              const userOnline = userPresence[message.user_id]?.online || false;
               
               return (
-                <div
+                <MessageItem
                   key={message.id}
-                  className={`flex gap-3 ${isMobile ? 'p-2' : 'p-3'} rounded-lg relative ${
-                    isOwnMessage ? 'flex-row-reverse bg-red-950/30' : 'flex-row bg-gray-900/50'
-                  } ${message.is_pinned ? 'border-2 border-yellow-500' : ''}`}
-                  style={{ 
-                    border: message.is_pinned ? '2px solid #ffd700' : '1px solid rgba(139,0,0,0.3)', 
-                    boxShadow: message.is_pinned 
-                      ? '0 0 20px rgba(255,215,0,0.3), inset 0 1px 3px rgba(0,0,0,0.3)' 
-                      : 'inset 0 1px 3px rgba(0,0,0,0.3)'
-                  }}
-                  onClick={() => isOwnMessage && handleDoubleClick(message.id)}
-                  onMouseDown={() => !isMobile && isOwnMessage && startLongPress(message.id)}
-                  onMouseUp={cancelLongPress}
-                  onMouseLeave={cancelLongPress}
-                >
-                  <div className="flex-shrink-0 relative">
-                    <div className={`${isMobile ? 'w-10 h-10 text-2xl border-3' : isTablet ? 'w-12 h-12 text-2xl border-3' : 'w-14 h-14 text-3xl border-4'} bg-gradient-to-br from-red-700 to-red-900 rounded-full flex items-center justify-center border-red-500 shadow-lg`} style={{ boxShadow: '0 0 15px rgba(255,0,0,0.5), inset 0 2px 4px rgba(255,255,255,0.1)' }}>
-                      {avatar.emoji}
-                    </div>
-                    {/* Online Status Indicator for other users */}
-                    <div
-                      className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-black ${
-                        userOnline ? 'bg-green-500' : 'bg-gray-500'
-                      }`}
-                      style={{ 
-                        boxShadow: userOnline ? '0 0 8px rgba(34, 197, 94, 0.8)' : 'none',
-                        transform: 'translate(25%, 25%)'
-                      }}
-                    />
-                  </div>
-                  <div
-                    className={`flex flex-col ${isMobile ? 'max-w-[80%]' : 'max-w-[70%]'} ${
-                      isOwnMessage ? 'items-end' : 'items-start'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className={`${isMobile ? 'text-[10px]' : 'text-xs'} text-red-400 mb-1 font-bold uppercase tracking-wide`} style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.5)' }}>
-                        {message.avatar_name} • {formatTime(message.created_at)}
-                        {message.is_pinned && <span className="text-yellow-400"> 📌</span>}
-                        {message.updated_at && <span className="text-gray-500">(editado)</span>}
-                      </div>
-                    </div>
-                    
-                    {isEditing ? (
-                      <div className="flex gap-2 w-full">
-                        <input
-                          type="text"
-                          value={editContent}
-                          onChange={(e) => setEditContent(e.target.value)}
-                          onKeyPress={(e) => e.key === 'Enter' && saveEditMessage()}
-                          className={`flex-1 ${isMobile ? 'px-2 py-1 text-sm' : 'px-3 py-2'} bg-black border-2 border-red-600 rounded text-white text-sm focus:outline-none focus:border-red-400`}
-                          style={{ fontFamily: 'Arial, sans-serif' }}
-                        />
-                        <button
-                          onClick={saveEditMessage}
-                          className={`${isMobile ? 'px-2 py-1 text-xs' : 'px-3 py-1 text-sm'} bg-green-600 text-white rounded border border-green-400 hover:bg-green-500`}
-                        >
-                          ✓
-                        </button>
-                        <button
-                          onClick={cancelEditMessage}
-                          className={`${isMobile ? 'px-2 py-1 text-xs' : 'px-3 py-1 text-sm'} bg-gray-600 text-white rounded border border-gray-400 hover:bg-gray-500`}
-                        >
-                          ✗
-                        </button>
-                      </div>
-                    ) : (
-                      <div
-                        className={`${isMobile ? 'p-2 text-sm' : 'p-4'} rounded-lg border-2 ${
-                          isOwnMessage
-                            ? 'bg-gradient-to-br from-red-800 to-red-950 border-red-500 text-white'
-                            : 'bg-gradient-to-br from-gray-800 to-gray-900 border-red-700 text-gray-100'
-                        }`}
-                        style={{ 
-                          fontFamily: 'Arial, sans-serif',
-                          boxShadow: isOwnMessage 
-                            ? '0 4px 15px rgba(139,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.1)' 
-                            : '0 4px 15px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.05)'
-                        }}
-                      >
-                        {parseMentions(message.content)}
-                      </div>
-                    )}
-                    
-                    {menuOpen && isOwnMessage && !isEditing && (
-                      <div className={`absolute ${isOwnMessage ? 'right-0' : 'left-0'} top-0 mt-8 bg-gradient-to-b from-gray-800 to-gray-900 border-4 border-double border-red-600 rounded-lg p-2 z-20 shadow-2xl`} style={{ boxShadow: '0 0 30px rgba(139,0,0,0.5)' }}>
-                        <div className="flex flex-col gap-1">
-                          <button
-                            onClick={() => handleMenuAction('pin', message)}
-                            className={`${isMobile ? 'px-3 py-2 text-xs' : 'px-4 py-2 text-sm'} rounded border ${
-                              message.is_pinned 
-                                ? 'bg-yellow-600 border-yellow-400 text-white' 
-                                : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-                            } text-left`}
-                          >
-                            {message.is_pinned ? '📌 Desfijar' : '📌 Fijar'}
-                          </button>
-                          <button
-                            onClick={() => handleMenuAction('edit', message)}
-                            className={`${isMobile ? 'px-3 py-2 text-xs' : 'px-4 py-2 text-sm'} rounded border bg-blue-600 border-blue-400 text-white hover:bg-blue-500 text-left`}
-                          >
-                            ✏️ Editar
-                          </button>
-                          <button
-                            onClick={() => handleMenuAction('delete', message)}
-                            className={`${isMobile ? 'px-3 py-2 text-xs' : 'px-4 py-2 text-sm'} rounded border bg-red-600 border-red-400 text-white hover:bg-red-500 text-left`}
-                          >
-                            🗑️ Eliminar
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  message={message}
+                  userId={userId}
+                  userPresence={userPresence}
+                  isEditing={isEditing}
+                  editContent={editContent}
+                  menuOpen={menuOpen}
+                  isOwnMessage={isOwnMessage}
+                  avatar={avatar}
+                  onDoubleClick={handleDoubleClick}
+                  onStartLongPress={startLongPress}
+                  onCancelLongPress={cancelLongPress}
+                  onEditContentChange={setEditContent}
+                  onSaveEdit={saveEditMessage}
+                  onCancelEdit={cancelEditMessage}
+                  onMenuAction={handleMenuAction}
+                  parseMentions={parseMentions}
+                  formatTime={formatTime}
+                />
               );
             })}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Area */}
           <div className={`${isMobile ? 'p-2' : 'p-4'} bg-gradient-to-b from-gray-900 to-black border-t-4 border-red-600`} style={{ borderTop: '3px solid #8b0000', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.5)' }}>
             <div className={`flex ${isMobile ? 'flex-col gap-2' : 'gap-3'}`}>
-              {/* Avatar Selector */}
-              <div className={`relative ${isMobile ? 'w-full flex justify-center' : ''}`}>
-                <button
-                  onClick={() => setShowAvatarDropdown(!showAvatarDropdown)}
-                  className={`${isMobile ? 'w-12 h-12 text-2xl border-3' : isTablet ? 'w-13 h-13 text-2xl border-3' : 'w-14 h-14 text-3xl border-4'} bg-gradient-to-br from-red-700 to-red-900 rounded-full flex items-center justify-center border-red-500 hover:from-red-600 hover:to-red-800 transition-all shadow-lg`}
-                  style={{ boxShadow: '0 0 20px rgba(255,0,0,0.4), inset 0 2px 4px rgba(255,255,255,0.1)' }}
-                >
-                  {selectedAvatar.avatar.emoji}
-                </button>
-                {/* Online Status Indicator */}
-                <div
-                  className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-black ${
-                    isOnline ? 'bg-green-500' : 'bg-gray-500'
-                  }`}
-                  style={{ 
-                    boxShadow: isOnline ? '0 0 10px rgba(34, 197, 94, 0.8)' : 'none',
-                    transform: 'translate(25%, 25%)'
-                  }}
-                />
-                
-                {showAvatarDropdown && (
-                  <div className={`${isMobile ? 'absolute bottom-14 left-1/2 -translate-x-1/2 w-64' : 'absolute bottom-16 left-0 w-72'} bg-gradient-to-b from-gray-800 to-gray-900 border-4 border-double border-red-600 rounded-lg ${isMobile ? 'p-3' : 'p-4'} z-10 shadow-2xl`} style={{ boxShadow: '0 0 30px rgba(139,0,0,0.5)' }}>
-                    {/* Filter Buttons */}
-                    <div className={`flex ${isMobile ? 'gap-1' : 'gap-2'} mb-3 flex-wrap`}>
-                      <button
-                        onClick={() => setAvatarFilter('all')}
-                        className={`${isMobile ? 'px-2 py-1 text-[10px]' : 'px-3 py-1 text-xs'} font-bold rounded border-2 ${
-                          avatarFilter === 'all' 
-                            ? 'bg-red-600 border-red-400 text-white' 
-                            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-                        }`}
-                        style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.5)' }}
-                      >
-                        Todos
-                      </button>
-                      <button
-                        onClick={() => setAvatarFilter('videojuego')}
-                        className={`${isMobile ? 'px-2 py-1 text-[10px]' : 'px-3 py-1 text-xs'} font-bold rounded border-2 ${
-                          avatarFilter === 'videojuego' 
-                            ? 'bg-red-600 border-red-400 text-white' 
-                            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-                        }`}
-                        style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.5)' }}
-                      >
-                        🎮 Videojuegos
-                      </button>
-                      <button
-                        onClick={() => setAvatarFilter('coche')}
-                        className={`${isMobile ? 'px-2 py-1 text-[10px]' : 'px-3 py-1 text-xs'} font-bold rounded border-2 ${
-                          avatarFilter === 'coche' 
-                            ? 'bg-red-600 border-red-400 text-white' 
-                            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-                        }`}
-                        style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.5)' }}
-                      >
-                        🏎️ Coches
-                      </button>
-                      <button
-                        onClick={() => setAvatarFilter('actor')}
-                        className={`${isMobile ? 'px-2 py-1 text-[10px]' : 'px-3 py-1 text-xs'} font-bold rounded border-2 ${
-                          avatarFilter === 'actor' 
-                            ? 'bg-red-600 border-red-400 text-white' 
-                            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-                        }`}
-                        style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.5)' }}
-                      >
-                        🎬 Actores
-                      </button>
-                    </div>
-                    
-                    {/* Avatar Grid */}
-                    <div className={`grid ${isMobile ? 'grid-cols-4' : 'grid-cols-5'} gap-2 max-h-48 overflow-y-auto p-2 bg-black/50 rounded border border-red-900`}>
-                      {filteredAvatars.map((avatar) => (
-                        <button
-                          key={avatar.name}
-                          onClick={() => handleAvatarChange(avatar)}
-                          className={`${isMobile ? 'w-10 h-10 text-xl' : 'w-12 h-12 text-2xl'} rounded flex items-center justify-center hover:scale-110 transition-all border-2 ${
-                            selectedAvatar.avatar.name === avatar.name 
-                              ? 'bg-red-600 border-red-400 shadow-lg' 
-                              : 'bg-gray-700 border-gray-600 hover:bg-gray-600'
-                          }`}
-                          style={{ boxShadow: selectedAvatar.avatar.name === avatar.name ? '0 0 15px rgba(255,0,0,0.5)' : 'none' }}
-                          title={avatar.name}
-                        >
-                          {avatar.emoji}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Message Input */}
-              <div className={`${isMobile ? 'w-full' : 'flex-1'} ${isMobile ? 'flex flex-col gap-2' : 'flex gap-2'}`}>
-                <input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                  placeholder="Escribe tu mensaje... Usa @ para mencionar"
-                  className={`${isMobile ? 'w-full' : 'flex-1'} ${isMobile ? 'px-3 py-2 text-sm' : 'px-4 py-3'} bg-black border-4 border-red-600 rounded text-white placeholder-gray-500 focus:outline-none focus:border-red-400 focus:shadow-lg transition-all`}
-                  style={{ 
-                    fontFamily: 'Arial, sans-serif',
-                    boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.5)',
-                    textShadow: '1px 1px 2px rgba(0,0,0,0.3)'
-                  }}
-                />
-                <button
-                  onClick={sendMessage}
-                  className={`${isMobile ? 'w-full' : ''} ${isMobile ? 'px-4 py-2 text-sm' : 'px-8 py-3'} bg-gradient-to-b from-red-600 to-red-900 text-white font-bold rounded border-4 border-red-500 hover:from-red-500 hover:to-red-800 transition-all shadow-lg`}
-                  style={{ 
-                    fontFamily: 'Arial, sans-serif',
-                    textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
-                    boxShadow: '0 4px 15px rgba(139,0,0,0.5), inset 0 1px 2px rgba(255,255,255,0.2)'
-                  }}
-                >
-                  💬 ENVIAR
-                </button>
-              </div>
+              <AvatarSelector
+                selectedAvatar={selectedAvatar}
+                showDropdown={showAvatarDropdown}
+                filter={avatarFilter}
+                isOnline={isOnline}
+                onToggle={() => setShowAvatarDropdown(!showAvatarDropdown)}
+                onFilterChange={setAvatarFilter}
+                onAvatarChange={handleAvatarChange}
+              />
+              <MessageInput
+                value={newMessage}
+                onChange={setNewMessage}
+                onSend={sendMessage}
+              />
             </div>
           </div>
         </div>
         
-        {/* Footer */}
-        <div className="mt-4 text-center text-red-700 text-xs" style={{ fontFamily: 'Times New Roman, serif' }}>
-          <p className={`${isMobile ? 'text-[10px]' : 'text-xs'}`}>✦ Guruguru Forum © 2000s Style • Powered by Supabase • Realtime Chat ✦</p>
-        </div>
+        <Footer />
       </main>
     </div>
   );
