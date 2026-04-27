@@ -16,6 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Guruguru Forum",
   description: "El foro del okupa rumano de Manises • Estilo 2000s",
+  other: {
+    'google-adsense-account': 'ca-pub-2440121173517125',
+  },
 };
 
 export default function RootLayout({
