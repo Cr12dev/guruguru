@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Message, Avatar, UserAvatar } from '@/types';
+import { Message, Avatar, UserAvatar, UserPresence } from '@/types';
 import { AVATARS, getRandomAvatar, getAvatarsByType } from '@/lib/avatars';
 import { useWindowSize } from '@/hooks/useWindowSize';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -17,8 +18,17 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [showAvatarDropdown, setShowAvatarDropdown] = useState(false);
   const [avatarFilter, setAvatarFilter] = useState<'all' | 'videojuego' | 'coche' | 'actor'>('all');
+  const [editingMessage, setEditingMessage] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [messageMenuOpen, setMessageMenuOpen] = useState<string | null>(null);
+  const [userPresence, setUserPresence] = useState<{ [key: string]: UserPresence }>({});
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const clickCountRef = useRef<{ [key: string]: number }>({});
+  const clickTimerRef = useRef<{ [key: string]: NodeJS.Timeout | null }>({});
+  const presenceUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { isMobile, isTablet, isDesktop } = useWindowSize();
+  const isOnline = useOnlineStatus();
 
   // Initialize localStorage-dependent state on client side
   useEffect(() => {
@@ -63,6 +73,76 @@ export default function Home() {
     }
     setUserId(id);
   }, []);
+
+  // Handle user presence
+  useEffect(() => {
+    if (!mounted || !userId) return;
+
+    // Subscribe to presence changes
+    const channel = supabase
+      .channel('user_presence')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'user_presence',
+      }, (payload) => {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          const presence = payload.new as UserPresence;
+          setUserPresence(prev => ({
+            ...prev,
+            [presence.user_id]: presence
+          }));
+        } else if (payload.eventType === 'DELETE') {
+          const presence = payload.old as UserPresence;
+          setUserPresence(prev => {
+            const updated = { ...prev };
+            delete updated[presence.user_id];
+            return updated;
+          });
+        }
+      })
+      .subscribe();
+
+    // Update own presence periodically
+    const updateOwnPresence = async () => {
+      if (!isOnline) return;
+      
+      await supabase
+        .from('user_presence')
+        .upsert({
+          user_id: userId,
+          online: true,
+          last_seen: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id'
+        });
+    };
+
+    // Initial presence update
+    updateOwnPresence();
+
+    // Update presence every 30 seconds
+    presenceUpdateIntervalRef.current = setInterval(updateOwnPresence, 30000);
+
+    // Set offline when unmounting
+    const setOffline = async () => {
+      await supabase
+        .from('user_presence')
+        .update({ online: false, last_seen: new Date().toISOString() })
+        .eq('user_id', userId);
+    };
+
+    window.addEventListener('beforeunload', setOffline);
+
+    return () => {
+      channel.unsubscribe();
+      if (presenceUpdateIntervalRef.current) {
+        clearInterval(presenceUpdateIntervalRef.current);
+      }
+      window.removeEventListener('beforeunload', setOffline);
+      setOffline();
+    };
+  }, [mounted, userId, isOnline]);
 
   // Load initial messages
   useEffect(() => {
@@ -132,6 +212,115 @@ export default function Home() {
     }
   };
 
+  const togglePinMessage = async (messageId: string, currentPinned: boolean) => {
+    const { error } = await supabase
+      .from('messages')
+      .update({ is_pinned: !currentPinned })
+      .eq('id', messageId);
+
+    if (error) {
+      console.error('Error pinning message:', error);
+    }
+  };
+
+  const startEditMessage = (message: Message) => {
+    setEditingMessage(message.id);
+    setEditContent(message.content);
+  };
+
+  const saveEditMessage = async () => {
+    if (!editingMessage || !editContent.trim()) return;
+
+    const { error } = await supabase
+      .from('messages')
+      .update({ 
+        content: editContent,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', editingMessage);
+
+    if (error) {
+      console.error('Error editing message:', error);
+    } else {
+      setEditingMessage(null);
+      setEditContent('');
+    }
+  };
+
+  const cancelEditMessage = () => {
+    setEditingMessage(null);
+    setEditContent('');
+  };
+
+  const deleteMessage = async (messageId: string) => {
+    if (!confirm('¿Estás seguro de que quieres eliminar este mensaje?')) return;
+
+    const { error } = await supabase
+      .from('messages')
+      .delete()
+      .eq('id', messageId);
+
+    if (error) {
+      console.error('Error deleting message:', error);
+    }
+    setMessageMenuOpen(null);
+  };
+
+  const handleLongPress = (messageId: string) => {
+    setMessageMenuOpen(messageId);
+  };
+
+  const handleMenuAction = (action: string, message: Message) => {
+    setMessageMenuOpen(null);
+    switch (action) {
+      case 'pin':
+        togglePinMessage(message.id, message.is_pinned);
+        break;
+      case 'edit':
+        startEditMessage(message);
+        break;
+      case 'delete':
+        deleteMessage(message.id);
+        break;
+    }
+  };
+
+  const startLongPress = (messageId: string) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+    longPressTimerRef.current = setTimeout(() => {
+      handleLongPress(messageId);
+    }, 500);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleDoubleClick = (messageId: string) => {
+    if (!isMobile) return;
+    
+    const currentCount = (clickCountRef.current[messageId] || 0) + 1;
+    clickCountRef.current[messageId] = currentCount;
+    
+    if (clickTimerRef.current[messageId]) {
+      clearTimeout(clickTimerRef.current[messageId]!);
+    }
+    
+    if (currentCount === 2) {
+      handleLongPress(messageId);
+      clickCountRef.current[messageId] = 0;
+    } else {
+      clickTimerRef.current[messageId] = setTimeout(() => {
+        clickCountRef.current[messageId] = 0;
+      }, 300);
+    }
+  };
+
   const handleAvatarChange = (avatar: Avatar) => {
     const newUniqueNumber = Math.floor(Math.random() * 9000000) + 1000000;
     const userAvatar = { avatar, uniqueNumber: newUniqueNumber };
@@ -171,6 +360,13 @@ export default function Home() {
     ? AVATARS 
     : getAvatarsByType(avatarFilter);
 
+  // Sort messages: pinned first, then by date
+  const sortedMessages = [...messages].sort((a, b) => {
+    if (a.is_pinned && !b.is_pinned) return -1;
+    if (!a.is_pinned && b.is_pinned) return 1;
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+  });
+
   if (!mounted) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -209,44 +405,127 @@ export default function Home() {
                 <p className={`${isMobile ? 'text-xs' : 'text-sm'} mt-2`}>¡Sé el primero en escribir!</p>
               </div>
             )}
-            {messages.map((message) => {
+            {sortedMessages.map((message) => {
               const avatar = getAvatarFromName(message.avatar_name);
+              const isOwnMessage = message.user_id === userId;
+              const isEditing = editingMessage === message.id;
+              const menuOpen = messageMenuOpen === message.id;
+              const userOnline = userPresence[message.user_id]?.online || false;
+              
               return (
                 <div
                   key={message.id}
-                  className={`flex gap-3 ${isMobile ? 'p-2' : 'p-3'} rounded-lg ${
-                    message.user_id === userId ? 'flex-row-reverse bg-red-950/30' : 'flex-row bg-gray-900/50'
-                  }`}
-                  style={{ border: '1px solid rgba(139,0,0,0.3)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}
+                  className={`flex gap-3 ${isMobile ? 'p-2' : 'p-3'} rounded-lg relative ${
+                    isOwnMessage ? 'flex-row-reverse bg-red-950/30' : 'flex-row bg-gray-900/50'
+                  } ${message.is_pinned ? 'border-2 border-yellow-500' : ''}`}
+                  style={{ 
+                    border: message.is_pinned ? '2px solid #ffd700' : '1px solid rgba(139,0,0,0.3)', 
+                    boxShadow: message.is_pinned 
+                      ? '0 0 20px rgba(255,215,0,0.3), inset 0 1px 3px rgba(0,0,0,0.3)' 
+                      : 'inset 0 1px 3px rgba(0,0,0,0.3)'
+                  }}
+                  onClick={() => isOwnMessage && handleDoubleClick(message.id)}
+                  onMouseDown={() => !isMobile && isOwnMessage && startLongPress(message.id)}
+                  onMouseUp={cancelLongPress}
+                  onMouseLeave={cancelLongPress}
                 >
-                  <div className="flex-shrink-0">
+                  <div className="flex-shrink-0 relative">
                     <div className={`${isMobile ? 'w-10 h-10 text-2xl border-3' : isTablet ? 'w-12 h-12 text-2xl border-3' : 'w-14 h-14 text-3xl border-4'} bg-gradient-to-br from-red-700 to-red-900 rounded-full flex items-center justify-center border-red-500 shadow-lg`} style={{ boxShadow: '0 0 15px rgba(255,0,0,0.5), inset 0 2px 4px rgba(255,255,255,0.1)' }}>
                       {avatar.emoji}
                     </div>
+                    {/* Online Status Indicator for other users */}
+                    <div
+                      className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-black ${
+                        userOnline ? 'bg-green-500' : 'bg-gray-500'
+                      }`}
+                      style={{ 
+                        boxShadow: userOnline ? '0 0 8px rgba(34, 197, 94, 0.8)' : 'none',
+                        transform: 'translate(25%, 25%)'
+                      }}
+                    />
                   </div>
                   <div
                     className={`flex flex-col ${isMobile ? 'max-w-[80%]' : 'max-w-[70%]'} ${
-                      message.user_id === userId ? 'items-end' : 'items-start'
+                      isOwnMessage ? 'items-end' : 'items-start'
                     }`}
                   >
-                    <div className={`${isMobile ? 'text-[10px]' : 'text-xs'} text-red-400 mb-1 font-bold uppercase tracking-wide`} style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.5)' }}>
-                      {message.avatar_name} • {formatTime(message.created_at)}
+                    <div className="flex items-center gap-2">
+                      <div className={`${isMobile ? 'text-[10px]' : 'text-xs'} text-red-400 mb-1 font-bold uppercase tracking-wide`} style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.5)' }}>
+                        {message.avatar_name} • {formatTime(message.created_at)}
+                        {message.is_pinned && <span className="text-yellow-400"> 📌</span>}
+                        {message.updated_at && <span className="text-gray-500">(editado)</span>}
+                      </div>
                     </div>
-                    <div
-                      className={`${isMobile ? 'p-2 text-sm' : 'p-4'} rounded-lg border-2 ${
-                        message.user_id === userId
-                          ? 'bg-gradient-to-br from-red-800 to-red-950 border-red-500 text-white'
-                          : 'bg-gradient-to-br from-gray-800 to-gray-900 border-red-700 text-gray-100'
-                      }`}
-                      style={{ 
-                        fontFamily: 'Arial, sans-serif',
-                        boxShadow: message.user_id === userId 
-                          ? '0 4px 15px rgba(139,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.1)' 
-                          : '0 4px 15px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.05)'
-                      }}
-                    >
-                      {parseMentions(message.content)}
-                    </div>
+                    
+                    {isEditing ? (
+                      <div className="flex gap-2 w-full">
+                        <input
+                          type="text"
+                          value={editContent}
+                          onChange={(e) => setEditContent(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && saveEditMessage()}
+                          className={`flex-1 ${isMobile ? 'px-2 py-1 text-sm' : 'px-3 py-2'} bg-black border-2 border-red-600 rounded text-white text-sm focus:outline-none focus:border-red-400`}
+                          style={{ fontFamily: 'Arial, sans-serif' }}
+                        />
+                        <button
+                          onClick={saveEditMessage}
+                          className={`${isMobile ? 'px-2 py-1 text-xs' : 'px-3 py-1 text-sm'} bg-green-600 text-white rounded border border-green-400 hover:bg-green-500`}
+                        >
+                          ✓
+                        </button>
+                        <button
+                          onClick={cancelEditMessage}
+                          className={`${isMobile ? 'px-2 py-1 text-xs' : 'px-3 py-1 text-sm'} bg-gray-600 text-white rounded border border-gray-400 hover:bg-gray-500`}
+                        >
+                          ✗
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        className={`${isMobile ? 'p-2 text-sm' : 'p-4'} rounded-lg border-2 ${
+                          isOwnMessage
+                            ? 'bg-gradient-to-br from-red-800 to-red-950 border-red-500 text-white'
+                            : 'bg-gradient-to-br from-gray-800 to-gray-900 border-red-700 text-gray-100'
+                        }`}
+                        style={{ 
+                          fontFamily: 'Arial, sans-serif',
+                          boxShadow: isOwnMessage 
+                            ? '0 4px 15px rgba(139,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.1)' 
+                            : '0 4px 15px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.05)'
+                        }}
+                      >
+                        {parseMentions(message.content)}
+                      </div>
+                    )}
+                    
+                    {menuOpen && isOwnMessage && !isEditing && (
+                      <div className={`absolute ${isOwnMessage ? 'right-0' : 'left-0'} top-0 mt-8 bg-gradient-to-b from-gray-800 to-gray-900 border-4 border-double border-red-600 rounded-lg p-2 z-20 shadow-2xl`} style={{ boxShadow: '0 0 30px rgba(139,0,0,0.5)' }}>
+                        <div className="flex flex-col gap-1">
+                          <button
+                            onClick={() => handleMenuAction('pin', message)}
+                            className={`${isMobile ? 'px-3 py-2 text-xs' : 'px-4 py-2 text-sm'} rounded border ${
+                              message.is_pinned 
+                                ? 'bg-yellow-600 border-yellow-400 text-white' 
+                                : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                            } text-left`}
+                          >
+                            {message.is_pinned ? '📌 Desfijar' : '📌 Fijar'}
+                          </button>
+                          <button
+                            onClick={() => handleMenuAction('edit', message)}
+                            className={`${isMobile ? 'px-3 py-2 text-xs' : 'px-4 py-2 text-sm'} rounded border bg-blue-600 border-blue-400 text-white hover:bg-blue-500 text-left`}
+                          >
+                            ✏️ Editar
+                          </button>
+                          <button
+                            onClick={() => handleMenuAction('delete', message)}
+                            className={`${isMobile ? 'px-3 py-2 text-xs' : 'px-4 py-2 text-sm'} rounded border bg-red-600 border-red-400 text-white hover:bg-red-500 text-left`}
+                          >
+                            🗑️ Eliminar
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -266,6 +545,16 @@ export default function Home() {
                 >
                   {selectedAvatar.avatar.emoji}
                 </button>
+                {/* Online Status Indicator */}
+                <div
+                  className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-black ${
+                    isOnline ? 'bg-green-500' : 'bg-gray-500'
+                  }`}
+                  style={{ 
+                    boxShadow: isOnline ? '0 0 10px rgba(34, 197, 94, 0.8)' : 'none',
+                    transform: 'translate(25%, 25%)'
+                  }}
+                />
                 
                 {showAvatarDropdown && (
                   <div className={`${isMobile ? 'absolute bottom-14 left-1/2 -translate-x-1/2 w-64' : 'absolute bottom-16 left-0 w-72'} bg-gradient-to-b from-gray-800 to-gray-900 border-4 border-double border-red-600 rounded-lg ${isMobile ? 'p-3' : 'p-4'} z-10 shadow-2xl`} style={{ boxShadow: '0 0 30px rgba(139,0,0,0.5)' }}>

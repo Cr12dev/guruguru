@@ -5,6 +5,8 @@ export interface Message {
   avatar_type: 'videojuego' | 'coche' | 'actor';
   user_id: string;
   created_at: string;
+  is_pinned: boolean;
+  updated_at: string | null;
 }
 
 export interface Avatar {
@@ -16,4 +18,10 @@ export interface Avatar {
 export interface UserAvatar {
   avatar: Avatar;
   uniqueNumber: number;
+}
+
+export interface UserPresence {
+  user_id: string;
+  online: boolean;
+  last_seen: string;
 }
