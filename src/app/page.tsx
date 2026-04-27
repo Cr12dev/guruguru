@@ -227,6 +227,7 @@ export default function Home() {
       console.error('Error sending message:', error);
     } else {
       setNewMessage('');
+      window.location.reload();
     }
   };
 
